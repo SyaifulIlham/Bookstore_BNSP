@@ -1,0 +1,10 @@
+{
+  "name": "worthbook-workspace",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently --kill-others-on-fail --names backend,frontend --prefix-colors blue,green \"npm --prefix Backend run serve:api\" \"npm --prefix Frontend-React run dev\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

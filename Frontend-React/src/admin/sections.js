@@ -1,0 +1,45 @@
+export const sections = {
+    books: {
+        label: 'Buku',
+        plural: 'Buku',
+        singular: 'buku',
+        description: 'Kelola buku yang tersedia untuk dijual.',
+        primary: (item) => item.title,
+        secondary: (item) => `${item.author?.name || 'Penulis belum dipilih'} · ${item.genre?.name || 'Genre belum dipilih'}${item.description ? ` — ${item.description}` : ''}`,
+        fields: [
+            { name: 'title', label: 'Judul buku', placeholder: 'Judul buku' },
+            { name: 'description', label: 'Deskripsi', placeholder: 'Deskripsi buku', multiline: true, required: false },
+            { name: 'price', label: 'Harga (Rp)', type: 'number', min: 0 },
+            { name: 'stock', label: 'Stok', type: 'number', min: 0 },
+            { name: 'cover_photo_file', label: 'Unggah sampul buku', type: 'file', accept: 'image/jpeg,image/png,image/webp', required: false },
+            { name: 'cover_photo', label: 'Atau URL sampul', placeholder: 'https://contoh.com/sampul.jpg', required: false },
+            { name: 'genre_id', label: 'Genre', type: 'select', options: 'genres' },
+            { name: 'author_id', label: 'Author', type: 'select', options: 'authors' },
+        ],
+    },
+    genres: {
+        label: 'Genre',
+        plural: 'Genre',
+        singular: 'genre',
+        description: 'Kelola kategori untuk katalog buku.',
+        fields: [
+            { name: 'name', label: 'Nama genre', placeholder: 'Contoh: Fiksi ilmiah' },
+            { name: 'description', label: 'Deskripsi', placeholder: 'Ceritakan tentang genre ini', multiline: true, required: false },
+        ],
+        primary: (item) => item.name,
+        secondary: (item) => item.description,
+    },
+    authors: {
+        label: 'Author',
+        plural: 'Author',
+        singular: 'author',
+        description: 'Kenali para penulis di katalog buku.',
+        fields: [
+            { name: 'name', label: 'Nama author', placeholder: 'Contoh: Andrea Hirata' },
+            { name: 'photo', label: 'Nama file / URL foto', placeholder: 'author.jpg', required: false },
+            { name: 'bio', label: 'Biografi', placeholder: 'Tuliskan biografi singkat author', multiline: true, required: false },
+        ],
+        primary: (item) => item.name,
+        secondary: (item) => item.bio,
+    },
+};
