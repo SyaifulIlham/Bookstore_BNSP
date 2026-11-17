@@ -20,6 +20,7 @@ class AuthApiTest extends TestCase
             $table->string('email')->unique();
             $table->string('password');
             $table->string('role')->default('customer');
+            $table->timestamps();
         });
         Schema::create('personal_access_tokens', function (Blueprint $table): void {
             $table->id();
@@ -36,11 +37,22 @@ class AuthApiTest extends TestCase
             $table->string('name');
             $table->text('description')->nullable();
         });
+        Schema::create('contact_messages', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('user_id')->nullable();
+            $table->string('name');
+            $table->string('email');
+            $table->string('subject');
+            $table->text('message');
+            $table->string('status')->default('new');
+            $table->timestamps();
+        });
     }
 
     protected function tearDown(): void
     {
         Schema::dropIfExists('genres');
+        Schema::dropIfExists('contact_messages');
         Schema::dropIfExists('personal_access_tokens');
         Schema::dropIfExists('users');
 
@@ -128,5 +140,56 @@ class AuthApiTest extends TestCase
         $this->withToken($token)
             ->postJson('/api/admin/genres', ['name' => 'Fiction'])
             ->assertForbidden();
+    }
+
+    public function test_admin_can_list_users_without_exposing_passwords(): void
+    {
+        $admin = User::query()->create([
+            'name' => 'Admin',
+            'email' => 'admin@example.com',
+            'password' => Hash::make('admin-password'),
+        ]);
+        $admin->role = 'admin';
+        $admin->save();
+        User::query()->create([
+            'name' => 'Customer',
+            'email' => 'customer@example.com',
+            'password' => Hash::make('customer-password'),
+        ]);
+
+        $this->withToken($admin->createToken('test')->plainTextToken)
+            ->getJson('/api/admin/users')
+            ->assertOk()
+            ->assertJsonCount(2)
+            ->assertJsonMissingPath('0.password');
+    }
+
+    public function test_contact_form_saves_message_for_admin(): void
+    {
+        $this->postJson('/api/contact-messages', [
+            'name' => 'Pelanggan',
+            'email' => 'customer@example.com',
+            'subject' => 'Pertanyaan buku',
+            'message' => 'Apakah stok masih tersedia?',
+        ])->assertCreated()
+            ->assertJsonPath('message', 'Pesan berhasil dikirim ke admin.');
+
+        $this->assertDatabaseHas('contact_messages', [
+            'email' => 'customer@example.com',
+            'subject' => 'Pertanyaan buku',
+        ]);
+
+        $admin = User::query()->create([
+            'name' => 'Admin',
+            'email' => 'admin@example.com',
+            'password' => Hash::make('admin-password'),
+        ]);
+        $admin->role = 'admin';
+        $admin->save();
+
+        $this->withToken($admin->createToken('test')->plainTextToken)
+            ->getJson('/api/admin/contact-messages')
+            ->assertOk()
+            ->assertJsonPath('0.subject', 'Pertanyaan buku');
     }
 }

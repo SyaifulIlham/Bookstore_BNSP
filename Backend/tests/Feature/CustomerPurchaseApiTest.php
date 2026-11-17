@@ -8,6 +8,7 @@ use App\Models\Genre;
 use App\Models\User;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
@@ -23,6 +24,7 @@ class CustomerPurchaseApiTest extends TestCase
             $table->string('email')->unique();
             $table->string('password');
             $table->string('role')->default('customer');
+            $table->timestamps();
         });
         Schema::create('personal_access_tokens', function (Blueprint $table): void {
             $table->id();
@@ -62,7 +64,10 @@ class CustomerPurchaseApiTest extends TestCase
             $table->foreignId('book_id')->constrained();
             $table->unsignedInteger('quantity')->default(1);
             $table->decimal('total_amount', 10, 2);
+            $table->text('delivery_address')->nullable();
+            $table->string('status', 20)->default('menunggu');
         });
+        Http::fake();
     }
 
     protected function tearDown(): void
@@ -85,14 +90,18 @@ class CustomerPurchaseApiTest extends TestCase
             ->postJson('/api/customer/transactions', [
                 'book_id' => $book->id,
                 'quantity' => 2,
+                'delivery_address' => 'Jl. Merdeka No. 10, Jakarta',
             ])
             ->assertCreated()
             ->assertJsonPath('quantity', 2)
             ->assertJsonPath('total_amount', '150000.00')
+            ->assertJsonPath('delivery_address', 'Jl. Merdeka No. 10, Jakarta')
+            ->assertJsonPath('status', 'menunggu')
             ->assertJsonPath('customer_id', $customer->id);
 
         $this->assertSame(2, $book->fresh()->stock);
         $this->assertDatabaseCount('transactions', 1);
+        Http::assertNothingSent();
     }
 
     public function test_purchase_rejects_quantity_above_stock_without_changing_stock(): void
@@ -103,6 +112,7 @@ class CustomerPurchaseApiTest extends TestCase
             ->postJson('/api/customer/transactions', [
                 'book_id' => $book->id,
                 'quantity' => 2,
+                'delivery_address' => 'Jl. Merdeka No. 10, Jakarta',
             ])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('quantity');
@@ -129,6 +139,7 @@ class CustomerPurchaseApiTest extends TestCase
                     ['book_id' => $book->id, 'quantity' => 2],
                     ['book_id' => $secondBook->id, 'quantity' => 1],
                 ],
+                'delivery_address' => 'Jl. Merdeka No. 10, Jakarta',
             ])
             ->assertCreated()
             ->assertJsonCount(2)
@@ -158,6 +169,7 @@ class CustomerPurchaseApiTest extends TestCase
                     ['book_id' => $book->id, 'quantity' => 2],
                     ['book_id' => $secondBook->id, 'quantity' => 2],
                 ],
+                'delivery_address' => 'Jl. Merdeka No. 10, Jakarta',
             ])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('items.1.quantity');
@@ -165,6 +177,79 @@ class CustomerPurchaseApiTest extends TestCase
         $this->assertSame(4, $book->fresh()->stock);
         $this->assertSame(1, $secondBook->fresh()->stock);
         $this->assertDatabaseCount('transactions', 0);
+    }
+
+    public function test_checkout_requires_a_delivery_address(): void
+    {
+        [, $book, $token] = $this->createCustomerAndBook(4);
+
+        $this->withToken($token)
+            ->postJson('/api/customer/transactions/checkout', [
+                'items' => [['book_id' => $book->id, 'quantity' => 1]],
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('delivery_address');
+
+        $this->assertSame(4, $book->fresh()->stock);
+        $this->assertDatabaseCount('transactions', 0);
+    }
+
+    public function test_admin_can_advance_order_status_in_sequence(): void
+    {
+        [$customer, $book] = $this->createCustomerAndBook(4);
+        $admin = User::query()->create([
+            'name' => 'Admin',
+            'email' => 'admin@example.com',
+            'password' => Hash::make('password123'),
+        ]);
+        $admin->role = 'admin';
+        $admin->save();
+        $transaction = $customer->transactions()->create([
+            'order_number' => 'ORD-STATUS-TEST',
+            'book_id' => $book->id,
+            'quantity' => 1,
+            'total_amount' => '75000.00',
+            'delivery_address' => 'Jl. Merdeka No. 10, Jakarta',
+            'status' => 'menunggu',
+        ]);
+        $token = $admin->createToken('test')->plainTextToken;
+
+        $this->withToken($token)
+            ->patchJson("/api/admin/transactions/{$transaction->id}/status", ['status' => 'selesai'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('status');
+
+        $this->withToken($token)
+            ->patchJson("/api/admin/transactions/{$transaction->id}/status", ['status' => 'diproses'])
+            ->assertOk()
+            ->assertJsonPath('status', 'diproses');
+
+        $this->withToken($token)
+            ->patchJson("/api/admin/transactions/{$transaction->id}/status", ['status' => 'selesai'])
+            ->assertOk()
+            ->assertJsonPath('status', 'selesai');
+
+        $this->assertDatabaseHas('transactions', [
+            'id' => $transaction->id,
+            'status' => 'selesai',
+        ]);
+    }
+
+    public function test_customer_cannot_update_order_status(): void
+    {
+        [$customer, $book, $token] = $this->createCustomerAndBook(4);
+        $transaction = $customer->transactions()->create([
+            'order_number' => 'ORD-CUSTOMER-STATUS',
+            'book_id' => $book->id,
+            'quantity' => 1,
+            'total_amount' => '75000.00',
+            'delivery_address' => 'Jl. Merdeka No. 10, Jakarta',
+            'status' => 'menunggu',
+        ]);
+
+        $this->withToken($token)
+            ->patchJson("/api/admin/transactions/{$transaction->id}/status", ['status' => 'diproses'])
+            ->assertForbidden();
     }
 
     private function createCustomerAndBook(int $stock): array

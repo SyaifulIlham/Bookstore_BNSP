@@ -13,6 +13,7 @@ function CartPage({ books, loading, error: catalogError }) {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [saving, setSaving] = useState(false);
+  const [deliveryAddress, setDeliveryAddress] = useState('');
 
   const cartItems = useMemo(() => items.map((item) => ({
     ...item,
@@ -27,6 +28,11 @@ function CartPage({ books, loading, error: catalogError }) {
   );
 
   async function handleCheckout() {
+    if (!deliveryAddress.trim()) {
+      setError('Alamat pengiriman wajib diisi.');
+      return;
+    }
+
     setSaving(true);
     setError('');
     setSuccess('');
@@ -37,15 +43,16 @@ function CartPage({ books, loading, error: catalogError }) {
         token,
         body: {
           items: items.map((item) => ({ book_id: item.bookId, quantity: item.quantity })),
+          delivery_address: deliveryAddress.trim(),
         },
       });
 
       if (!Array.isArray(transactions)) {
-        throw new Error('Respons checkout dari server tidak valid.');
+        throw new Error('Respons transaksi dari server tidak valid.');
       }
 
-      const orderNumbers = transactions.map((transaction) => transaction.order_number).filter(Boolean);
       clearCart();
+      const orderNumbers = transactions.map((transaction) => transaction.order_number).filter(Boolean);
       setSuccess(
         orderNumbers.length
           ? `Pesanan berhasil dibuat: ${orderNumbers.join(', ')}.`
@@ -143,13 +150,32 @@ function CartPage({ books, loading, error: catalogError }) {
               </tfoot>
             </table>
           </div>
+          <div className="row justify-content-end mt-4">
+            <div className="col-md-7 col-lg-5">
+              <label className="form-label fw-semibold" htmlFor="delivery-address">Alamat pengiriman</label>
+              <textarea
+                autoComplete="street-address"
+                className="form-control"
+                disabled={saving}
+                id="delivery-address"
+                maxLength={2000}
+                onChange={(event) => setDeliveryAddress(event.target.value)}
+                required
+                rows={3}
+                value={deliveryAddress}
+              />
+              <p className="text-muted small mt-2 mb-0">
+                Total yang harus dibayar: <strong>{formatRupiah(subtotal)}</strong>
+              </p>
+            </div>
+          </div>
           <div className="d-flex justify-content-end mt-3">
             <Button
-              disabled={saving || hasInvalidItems || cartItems.length === 0}
+              disabled={saving || hasInvalidItems || cartItems.length === 0 || !deliveryAddress.trim()}
               onClick={handleCheckout}
               variant="dark"
             >
-              {saving ? 'Memproses pesanan...' : 'Checkout'}
+              {saving ? 'Membuat pesanan...' : 'Buat pesanan'}
             </Button>
           </div>
         </>

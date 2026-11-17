@@ -4,6 +4,7 @@ import BookPage from './pages/Bookpage';
 import Footer from './components/Footer';
 import Navbar from './components/Navbar';
 import ContactPage from './pages/Contact';
+import AboutPage from './pages/About';
 import HomePage from './pages/Home';
 import LoginPage from './pages/Login';
 import MaterialDetailPage from './pages/MaterialDetail';
@@ -63,6 +64,7 @@ function App() {
         <Route path="/book" element={<BookPage books={books} loading={loadingBooks} error={booksError} />} />
         <Route path="/buku/:id" element={<MaterialDetailPage books={books} loading={loadingBooks} error={booksError} />} />
         <Route path="/team" element={<TeamPage />} />
+        <Route path="/about" element={<AboutPage />} />
         <Route path="/contact" element={<ContactPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />

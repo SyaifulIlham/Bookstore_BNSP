@@ -14,21 +14,34 @@ import './admin.css';
 
 const emptyRecords = { books: [], genres: [], authors: [] };
 const sectionUrl = (section) => `/admin/${section}`;
+const sectionTitles = {
+  books: 'Kelola buku',
+  genres: 'Kelola genre',
+  authors: 'Kelola author',
+  transactions: 'Daftar pesanan',
+  users: 'Pengguna terdaftar',
+  messages: 'Pesan dari customer',
+};
 
 async function requestCatalog(token) {
-  const [books, genres, authors, transactions] = await Promise.all([
+  const [books, genres, authors, transactions, users, contactMessages] = await Promise.all([
     apiRequest(sectionUrl('books'), { token }),
     apiRequest(sectionUrl('genres'), { token }),
     apiRequest(sectionUrl('authors'), { token }),
     apiRequest('/admin/transactions', { token }),
+    apiRequest('/admin/users', { token }),
+    apiRequest('/admin/contact-messages', { token }),
   ]);
-  return { books, genres, authors, transactions };
+  return { books, genres, authors, transactions, users, contactMessages };
 }
 
 function AdminPage() {
   const { token, user, logout } = useAuth();
   const [records, setRecords] = useState(emptyRecords);
   const [transactions, setTransactions] = useState([]);
+  const [updatingTransactionId, setUpdatingTransactionId] = useState(null);
+  const [users, setUsers] = useState([]);
+  const [contactMessages, setContactMessages] = useState([]);
   const [activeSection, setActiveSection] = useState('books');
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -54,6 +67,8 @@ function AdminPage() {
         authors: catalog.authors,
       });
       setTransactions(catalog.transactions);
+      setUsers(catalog.users);
+      setContactMessages(catalog.contactMessages);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Data admin gagal dimuat.');
     } finally {
@@ -73,6 +88,8 @@ function AdminPage() {
           authors: catalog.authors,
         });
         setTransactions(catalog.transactions);
+        setUsers(catalog.users);
+        setContactMessages(catalog.contactMessages);
         setError('');
       })
       .catch((requestError) => {
@@ -87,13 +104,19 @@ function AdminPage() {
     };
   }, [token]);
 
-  const currentSection = sections[activeSection];
-  const filteredRecords = useMemo(() => records[activeSection].filter((record) => {
-    const searchableText = `${currentSection.primary(record)} ${currentSection.secondary(record) || ''}`;
-    return searchableText.toLowerCase().includes(search.toLowerCase());
-  }), [activeSection, currentSection, records, search]);
+  const currentSection = sections[activeSection] || null;
+  const filteredRecords = useMemo(() => {
+    if (!currentSection) return [];
+
+    return records[activeSection].filter((record) => {
+      const searchableText = `${currentSection.primary(record)} ${currentSection.secondary(record) || ''}`;
+      return searchableText.toLowerCase().includes(search.toLowerCase());
+    });
+  }, [activeSection, currentSection, records, search]);
 
   function openForm(record = null) {
+    if (!currentSection) return;
+
     setEditingRecord(record);
     setShowForm(true);
     setFormError('');
@@ -182,6 +205,26 @@ function AdminPage() {
     }
   }
 
+  async function handleAdvanceTransaction(transaction) {
+    const nextStatus = transaction.status === 'menunggu' ? 'diproses' : 'selesai';
+    setUpdatingTransactionId(transaction.id);
+    setError('');
+
+    try {
+      const updatedTransaction = await apiRequest(
+        `/admin/transactions/${transaction.id}/status`,
+        { method: 'PATCH', token, body: { status: nextStatus } },
+      );
+      setTransactions((current) => current.map((item) => (
+        item.id === updatedTransaction.id ? updatedTransaction : item
+      )));
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Status pesanan gagal diperbarui.');
+    } finally {
+      setUpdatingTransactionId(null);
+    }
+  }
+
   return (
     <main className="admin-console">
       <AdminSidebar
@@ -189,9 +232,15 @@ function AdminPage() {
         onSectionChange={(section) => {
           setActiveSection(section);
           setSearch('');
+          setShowForm(false);
+          setEditingRecord(null);
+          setDeletingRecord(null);
         }}
         onSignOut={handleSignOut}
         records={records}
+        transactions={transactions}
+        users={users}
+        contactMessages={contactMessages}
         user={user}
       />
       <div className="admin-content">
@@ -199,9 +248,11 @@ function AdminPage() {
           <div className="admin-topbar">
             <div>
               <p className="eyebrow mb-1">PANEL ADMIN</p>
-              <h1 className="h3 mb-0">Kelola katalog</h1>
+              <h1 className="h3 mb-0">{sectionTitles[activeSection]}</h1>
             </div>
-            <Button onClick={() => openForm()} variant="dark">Tambah {currentSection.singular}</Button>
+            {currentSection && (
+              <Button onClick={() => openForm()} variant="dark">Tambah {currentSection.singular}</Button>
+            )}
           </div>
 
           {error && <Alert variant="danger" role="alert">{error}</Alert>}
@@ -210,50 +261,125 @@ function AdminPage() {
             <SummaryCard label="Genre" value={records.genres.length} icon="G" tone="tone-genre" />
             <SummaryCard label="Author" value={records.authors.length} icon="A" tone="tone-author" />
             <SummaryCard label="Transaksi" value={transactions.length} icon="T" tone="tone-order" />
+            <SummaryCard label="Pengguna" value={users.length} icon="U" tone="tone-book" />
+            <SummaryCard label="Pesan masuk" value={contactMessages.length} icon="P" tone="tone-genre" />
           </div>
 
-          <CatalogRecordList
-            activeSection={activeSection}
-            currentSection={currentSection}
-            deletingId={deletingId}
-            error={error}
-            filteredRecords={filteredRecords}
-            loading={loading}
-            onCreate={() => openForm()}
-            onDelete={(record) => {
-              setDeleteError('');
-              setFormValues({});
-              setDeletingRecord(record);
-            }}
-            onEdit={openForm}
-            onSearchChange={setSearch}
-            records={records}
-            search={search}
-          />
+          {currentSection && (
+            <CatalogRecordList
+              activeSection={activeSection}
+              currentSection={currentSection}
+              deletingId={deletingId}
+              error={error}
+              filteredRecords={filteredRecords}
+              loading={loading}
+              onCreate={() => openForm()}
+              onDelete={(record) => {
+                setDeleteError('');
+                setFormValues({});
+                setDeletingRecord(record);
+              }}
+              onEdit={openForm}
+              onSearchChange={setSearch}
+              records={records}
+              search={search}
+            />
+          )}
 
-          <section className="admin-orders-panel">
-            <h2 className="h5">Transaksi terbaru</h2>
+          {activeSection === 'transactions' && (
+            <section className="admin-orders-panel">
+              <h2 className="h5">Daftar pesanan</h2>
             {transactions.length === 0 ? (
               <p className="text-muted mb-0">{loading ? 'Memuat transaksi...' : 'Belum ada transaksi.'}</p>
             ) : (
               <div className="table-responsive">
                 <table className="table align-middle mb-0">
-                  <thead><tr><th>Pesanan</th><th>Customer</th><th>Buku</th><th>Jumlah</th><th>Total</th></tr></thead>
+                  <thead><tr><th>Pesanan</th><th>Customer</th><th>Buku</th><th>Jumlah</th><th>Total</th><th>Alamat pengiriman</th><th>Status</th><th>Aksi</th></tr></thead>
                   <tbody>
-                    {transactions.slice(0, 5).map((transaction) => (
+                    {transactions.map((transaction) => (
                       <tr key={transaction.id}>
                         <td>{transaction.order_number}</td>
                         <td>{transaction.customer?.name || 'Customer'}</td>
                         <td>{transaction.book?.title || 'Buku'}</td>
                         <td>{transaction.quantity}</td>
                         <td>{Number(transaction.total_amount).toLocaleString('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 })}</td>
+                        <td>{transaction.delivery_address || 'Alamat belum tersedia'}</td>
+                        <td>{transaction.status || 'menunggu'}</td>
+                        <td>
+                          {transaction.status !== 'selesai' && (
+                            <Button
+                              disabled={updatingTransactionId !== null}
+                              onClick={() => handleAdvanceTransaction(transaction)}
+                              size="sm"
+                              variant="outline-dark"
+                            >
+                              {updatingTransactionId === transaction.id
+                                ? 'Menyimpan...'
+                                : transaction.status === 'diproses'
+                                  ? 'Tandai selesai'
+                                  : 'Proses pesanan'}
+                            </Button>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             )}
-          </section>
+            </section>
+          )}
+
+          {activeSection === 'users' && (
+            <section className="admin-orders-panel">
+              <h2 className="h5">Pengguna terdaftar</h2>
+            {users.length === 0 ? (
+              <p className="text-muted mb-0">{loading ? 'Memuat pengguna...' : 'Belum ada pengguna.'}</p>
+            ) : (
+              <div className="table-responsive">
+                <table className="table align-middle mb-0">
+                  <thead><tr><th>Nama</th><th>Email</th><th>Peran</th><th>Terdaftar</th></tr></thead>
+                  <tbody>
+                    {users.map((listedUser) => (
+                      <tr key={listedUser.id}>
+                        <td>{listedUser.name}</td>
+                        <td>{listedUser.email}</td>
+                        <td>{listedUser.role}</td>
+                        <td>{listedUser.created_at ? new Date(listedUser.created_at).toLocaleDateString('id-ID') : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            </section>
+          )}
+
+          {activeSection === 'messages' && (
+            <section className="admin-orders-panel">
+              <h2 className="h5">Pesan dari pelanggan</h2>
+            {contactMessages.length === 0 ? (
+              <p className="text-muted mb-0">{loading ? 'Memuat pesan...' : 'Belum ada pesan.'}</p>
+            ) : (
+              <div className="table-responsive">
+                <table className="table align-middle mb-0">
+                  <thead><tr><th>Pengirim</th><th>Email</th><th>Subjek</th><th>Pesan</th><th>Dikirim</th></tr></thead>
+                  <tbody>
+                    {contactMessages.map((message) => (
+                      <tr key={message.id}>
+                        <td>{message.name}</td>
+                        <td>{message.email}</td>
+                        <td>{message.subject}</td>
+                        <td className="text-break">{message.message}</td>
+                        <td>{new Date(message.created_at).toLocaleDateString('id-ID')}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            </section>
+          )}
         </Container>
       </div>
 

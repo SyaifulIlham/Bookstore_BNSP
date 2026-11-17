@@ -328,6 +328,29 @@
   background: #fafbfc;
 }
 
+.admin-console .records-header-books,
+.admin-console .record-row-books {
+  grid-template-columns: minmax(160px, 1.5fr) minmax(110px, 0.9fr) minmax(100px, 0.8fr) minmax(150px, 2fr) 80px 150px;
+}
+
+.admin-console .record-row-books > .record-book-author,
+.admin-console .record-row-books > .record-book-genre {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-console .record-description-clamped {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.admin-console .record-book-mobile-meta {
+  display: none;
+}
+
 .admin-console .record-row {
   min-height: 76px;
   border-bottom: 1px solid #eef0f2;
@@ -558,6 +581,11 @@
     padding-right: 0.75rem;
     padding-left: 0.75rem;
   }
+
+  .admin-console .records-header-books,
+  .admin-console .record-row-books {
+    grid-template-columns: minmax(130px, 1.2fr) minmax(90px, 0.8fr) minmax(90px, 0.8fr) minmax(130px, 1.4fr) 70px 120px;
+  }
 }
 
 @media (max-width: 700px) {
@@ -606,6 +634,19 @@
   .admin-console .record-row {
     grid-template-columns: minmax(0, 1fr) auto;
     padding: 0.85rem;
+  }
+
+  .admin-console .record-row-books {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .admin-console .record-book-author,
+  .admin-console .record-book-genre {
+    display: none;
+  }
+
+  .admin-console .record-book-mobile-meta {
+    display: block;
   }
 
   .admin-console .record-description,

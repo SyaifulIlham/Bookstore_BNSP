@@ -51,6 +51,9 @@ class LegacySchemaMigrationTest extends TestCase
     {
         Schema::dropIfExists('transactions');
         Schema::dropIfExists('books');
+        Schema::dropIfExists('authors');
+        Schema::dropIfExists('genres');
+        Schema::dropIfExists('contact_messages');
         Schema::dropIfExists('sessions');
         Schema::dropIfExists('password_reset_tokens');
         Schema::dropIfExists('users');
@@ -65,12 +68,23 @@ class LegacySchemaMigrationTest extends TestCase
 
         $migration = require database_path('migrations/2026_11_13_080000_add_quantity_and_hash_legacy_passwords.php');
         $migration->up();
+        $featureMigration = require database_path('migrations/2026_11_15_214000_create_bookstore_feature_tables.php');
+        $featureMigration->up();
+        $deliveryMigration = require database_path('migrations/2026_11_16_000000_add_delivery_details_to_transactions.php');
+        $deliveryMigration->up();
 
         $user = DB::table('users')->first();
 
         $this->assertTrue(Hash::check('legacy-password', $user->password));
         $this->assertTrue(Schema::hasColumn('transactions', 'quantity'));
+        $this->assertTrue(Schema::hasColumn('transactions', 'delivery_address'));
+        $this->assertTrue(Schema::hasColumn('transactions', 'status'));
+        $this->assertTrue(Schema::hasColumn('users', 'updated_at'));
+        $this->assertTrue(Schema::hasTable('authors'));
+        $this->assertTrue(Schema::hasTable('genres'));
+        $this->assertTrue(Schema::hasTable('contact_messages'));
         $this->assertSame(1, DB::table('transactions')->count());
         $this->assertSame(2, (int) DB::table('transactions')->value('quantity'));
+        $this->assertSame('menunggu', DB::table('transactions')->value('status'));
     }
 }

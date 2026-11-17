@@ -10,10 +10,22 @@ use RuntimeException;
 
 class BookController extends Controller
 {
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
+        $validated = $request->validate([
+            'q' => ['sometimes', 'nullable', 'string', 'max:255'],
+        ]);
+
         $books = Book::query()
             ->with(['author', 'genre'])
+            ->when(filled($validated['q'] ?? null), function ($query) use ($validated): void {
+                $search = trim($validated['q']);
+                $query->where(function ($query) use ($search): void {
+                    $query->where('title', 'like', "%{$search}%")
+                        ->orWhereHas('author', fn ($authorQuery) => $authorQuery->where('name', 'like', "%{$search}%"))
+                        ->orWhereHas('genre', fn ($genreQuery) => $genreQuery->where('name', 'like', "%{$search}%"));
+                });
+            })
             ->orderBy('title')
             ->get();
 

@@ -13,7 +13,7 @@ function Footer() {
               <Link to="/#buku" className="nav-link px-2 text-light">Koleksi buku</Link>
             </li>
             <li className="nav-item">
-              <Link to="/team" className="nav-link px-2 text-light">Tentang kami</Link>
+              <Link to="/about" className="nav-link px-2 text-light">Tentang kami</Link>
             </li>
             <li className="nav-item">
               <Link to="/contact" className="nav-link px-2 text-light">Kontak</Link>

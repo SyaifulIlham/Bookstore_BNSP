@@ -31,9 +31,17 @@ export default function CatalogRecordList({
                 </label>
             </div>
 
-            <div className="records-header">
-                <span>{currentSection.singular.toUpperCase()}</span>
-                <span>DESKRIPSI</span>
+            <div className={`records-header ${activeSection === 'books' ? 'records-header-books' : ''}`}>
+                <span>{activeSection === 'books' ? 'BUKU' : currentSection.singular.toUpperCase()}</span>
+                {activeSection === 'books' ? (
+                    <>
+                        <span>AUTHOR</span>
+                        <span>GENRE</span>
+                        <span>DESKRIPSI</span>
+                    </>
+                ) : (
+                    <span>DESKRIPSI</span>
+                )}
                 <span>STATUS</span>
                 <span>AKSI</span>
             </div>
@@ -43,9 +51,17 @@ export default function CatalogRecordList({
             ) : filteredRecords.length > 0 ? (
                 <div className="record-list">
                     {filteredRecords.map((item, index) => (
-                        <article className="record-row" key={item.id}>
+                        <article className={`record-row ${activeSection === 'books' ? 'record-row-books' : ''}`} key={item.id}>
                             <div className="record-primary">
-                                {activeSection === 'authors' ? (
+                                {activeSection === 'books' ? (
+                                    <div className="record-avatar">
+                                        {item.cover_photo ? (
+                                            <img alt="" onError={(event) => { event.currentTarget.remove(); }} src={item.cover_photo} />
+                                        ) : (
+                                            <span>{item.title?.slice(0, 1)?.toUpperCase()}</span>
+                                        )}
+                                    </div>
+                                ) : activeSection === 'authors' ? (
                                     <div className="record-avatar">
                                         <span>{item.name?.slice(0, 1)}</span>
                                         {item.photo && <img alt="" onError={(event) => { event.currentTarget.style.display = 'none'; }} src={item.photo} />}
@@ -55,10 +71,28 @@ export default function CatalogRecordList({
                                 )}
                                 <div>
                                     <strong>{currentSection.primary(item)}</strong>
-                                    <small>Ditambahkan ke katalog</small>
+                                    <small className={activeSection === 'books' ? 'record-book-mobile-meta' : ''}>
+                                        {activeSection === 'books'
+                                            ? `${item.author?.name || 'Penulis belum dipilih'} · ${item.genre?.name || 'Genre belum dipilih'}`
+                                            : 'Ditambahkan ke katalog'}
+                                    </small>
                                 </div>
                             </div>
-                            <p className="record-description">{currentSection.secondary(item) || 'Belum ada deskripsi.'}</p>
+                            {activeSection === 'books' ? (
+                                <>
+                                    <span className="record-book-author" title={item.author?.name || ''}>
+                                        {item.author?.name || 'Belum dipilih'}
+                                    </span>
+                                    <span className="record-book-genre" title={item.genre?.name || ''}>
+                                        {item.genre?.name || 'Belum dipilih'}
+                                    </span>
+                                    <p className="record-description record-description-clamped" title={item.description || ''}>
+                                        {item.description || 'Belum ada deskripsi.'}
+                                    </p>
+                                </>
+                            ) : (
+                                <p className="record-description">{currentSection.secondary(item) || 'Belum ada deskripsi.'}</p>
+                            )}
                             <span className="status-pill"><i /> Aktif</span>
                             <div className="record-actions">
                                 <button

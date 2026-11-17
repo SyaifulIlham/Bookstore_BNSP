@@ -25,6 +25,7 @@ class BookApiTest extends TestCase
             $table->string('email')->unique();
             $table->string('password');
             $table->string('role')->default('customer');
+            $table->timestamps();
         });
         Schema::create('authors', function (Blueprint $table): void {
             $table->id();
@@ -99,6 +100,35 @@ class BookApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('id', $book->id)
             ->assertJsonPath('title', 'Laskar Pelangi');
+    }
+
+    public function test_catalog_search_matches_book_title_and_author(): void
+    {
+        $author = Author::query()->create(['name' => 'Andrea Hirata']);
+        $genre = Genre::query()->create(['name' => 'Fiction']);
+        Book::query()->create([
+            'title' => 'Laskar Pelangi',
+            'price' => 75000,
+            'stock' => 4,
+            'genre_id' => $genre->id,
+            'author_id' => $author->id,
+        ]);
+        Book::query()->create([
+            'title' => 'Bumi Manusia',
+            'price' => 95000,
+            'stock' => 2,
+            'genre_id' => $genre->id,
+            'author_id' => $author->id,
+        ]);
+
+        $this->getJson('/api/books?q=Laskar')
+            ->assertOk()
+            ->assertJsonCount(1)
+            ->assertJsonPath('0.title', 'Laskar Pelangi');
+
+        $this->getJson('/api/books?q=Andrea')
+            ->assertOk()
+            ->assertJsonCount(2);
     }
 
     public function test_admin_can_upload_and_replace_a_book_cover(): void

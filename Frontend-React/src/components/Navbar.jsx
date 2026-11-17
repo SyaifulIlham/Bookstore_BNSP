@@ -12,7 +12,7 @@ import { useCart } from '../auth/useCart';
 const navItems = [
   { path: '/', label: 'Beranda' },
   { path: '/book', label: 'Buku' },
-  { path: '/team', label: 'Team' },
+  { path: '/about', label: 'Tentang kami' },
   { path: '/contact', label: 'Kontak' },
 ];
 

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Book;
 use App\Models\Transaction;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -26,7 +27,6 @@ class TransactionController extends Controller
     public function mine(Request $request): JsonResponse
     {
         $user = $request->user();
-
         abort_unless($user !== null, 401);
 
         $transactions = $user->transactions()
@@ -42,13 +42,13 @@ class TransactionController extends Controller
         $validated = $request->validate([
             'book_id' => ['required', 'integer', 'exists:books,id'],
             'quantity' => ['required', 'integer', 'min:1'],
+            'delivery_address' => ['required', 'string', 'max:2000'],
             'customer_id' => ['prohibited'],
             'total_amount' => ['prohibited'],
         ]);
 
         $user = $request->user();
-
-        abort_unless($user !== null, 401);
+        abort_unless($user instanceof User, 401);
 
         $transaction = DB::transaction(function () use ($validated, $user): Transaction {
             $book = Book::query()->lockForUpdate()->findOrFail($validated['book_id']);
@@ -67,6 +67,8 @@ class TransactionController extends Controller
                 'book_id' => $book->id,
                 'quantity' => $quantity,
                 'total_amount' => $this->calculateTotalAmount($book, $quantity),
+                'delivery_address' => $validated['delivery_address'],
+                'status' => 'menunggu',
             ])->load(['customer', 'book']);
         });
 
@@ -79,12 +81,13 @@ class TransactionController extends Controller
             'items' => ['required', 'array', 'min:1', 'max:50'],
             'items.*.book_id' => ['required', 'integer', 'distinct', 'exists:books,id'],
             'items.*.quantity' => ['required', 'integer', 'min:1', 'max:1000000'],
+            'delivery_address' => ['required', 'string', 'max:2000'],
             'customer_id' => ['prohibited'],
             'total_amount' => ['prohibited'],
         ]);
 
         $user = $request->user();
-        abort_unless($user !== null, 401);
+        abort_unless($user instanceof User, 401);
 
         $transactions = DB::transaction(function () use ($validated, $user): array {
             $bookIds = collect($validated['items'])
@@ -103,9 +106,9 @@ class TransactionController extends Controller
                 $book = $books->get($item['book_id']);
                 $quantity = $item['quantity'];
 
-                if ($book->stock < $quantity) {
+                if ($book === null || $book->stock < $quantity) {
                     throw ValidationException::withMessages([
-                        "items.{$index}.quantity" => "Stok {$book->title} tidak mencukupi.",
+                        "items.{$index}.quantity" => 'Stok buku tidak mencukupi.',
                     ]);
                 }
 
@@ -115,6 +118,8 @@ class TransactionController extends Controller
                     'book_id' => $book->id,
                     'quantity' => $quantity,
                     'total_amount' => $this->calculateTotalAmount($book, $quantity),
+                    'delivery_address' => $validated['delivery_address'],
+                    'status' => 'menunggu',
                 ]);
             }
 
@@ -127,6 +132,28 @@ class TransactionController extends Controller
         });
 
         return response()->json($transactions, 201);
+    }
+
+    public function updateStatus(Request $request, Transaction $transaction): JsonResponse
+    {
+        $validated = $request->validate([
+            'status' => ['required', 'string', Rule::in(['diproses', 'selesai'])],
+        ]);
+
+        $allowedNextStatus = [
+            'menunggu' => 'diproses',
+            'diproses' => 'selesai',
+        ];
+
+        if (($allowedNextStatus[$transaction->status] ?? null) !== $validated['status']) {
+            throw ValidationException::withMessages([
+                'status' => 'Status pesanan hanya dapat diubah secara berurutan dari menunggu ke diproses, lalu selesai.',
+            ]);
+        }
+
+        $transaction->update(['status' => $validated['status']]);
+
+        return response()->json($transaction->load(['customer', 'book']));
     }
 
     public function show(Request $request, Transaction $transaction): JsonResponse
@@ -159,7 +186,6 @@ class TransactionController extends Controller
                 ? Book::query()->findOrFail($validated['book_id'])
                 : $transaction->book;
             $quantity = $validated['quantity'] ?? $transaction->quantity;
-
             $validated['total_amount'] = $this->calculateTotalAmount($book, $quantity);
         }
 
@@ -178,7 +204,6 @@ class TransactionController extends Controller
     private function ensureCustomerOwnsTransaction(Request $request, Transaction $transaction): void
     {
         $user = $request->user();
-
         abort_unless(
             $user !== null && (string) $transaction->customer_id === (string) $user->getAuthIdentifier(),
             404,

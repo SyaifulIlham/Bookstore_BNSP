@@ -45,7 +45,7 @@ function OrdersPage() {
         <div className="table-responsive">
           <table className="table align-middle">
             <thead>
-              <tr><th>Nomor pesanan</th><th>Buku</th><th>Jumlah</th><th>Total</th></tr>
+              <tr><th>Nomor pesanan</th><th>Buku</th><th>Jumlah</th><th>Total</th><th>Alamat pengiriman</th><th>Status</th></tr>
             </thead>
             <tbody>
               {orders.map((order) => (
@@ -54,6 +54,8 @@ function OrdersPage() {
                   <td>{order.book?.title || 'Buku tidak tersedia'}</td>
                   <td>{order.quantity}</td>
                   <td>{Number(order.total_amount).toLocaleString('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 })}</td>
+                  <td>{order.delivery_address || 'Alamat belum tersedia'}</td>
+                  <td>{order.status || 'menunggu'}</td>
                 </tr>
               ))}
             </tbody>
