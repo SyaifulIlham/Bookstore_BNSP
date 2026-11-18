@@ -1,14 +1,18 @@
 import { useEffect, useState } from 'react';
 import Alert from 'react-bootstrap/Alert';
+import Badge from 'react-bootstrap/Badge';
+import Card from 'react-bootstrap/Card';
 import Spinner from 'react-bootstrap/Spinner';
 import { useAuth } from '../auth/useAuth';
 import { apiRequest } from '../services/api';
+import { groupTransactions } from '../utils/groupTransactions';
 
 function OrdersPage() {
   const { token } = useAuth();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const groupedOrders = groupTransactions(orders);
 
   useEffect(() => {
     let active = true;
@@ -42,24 +46,40 @@ function OrdersPage() {
       ) : orders.length === 0 ? (
         <Alert variant="info">Anda belum memiliki pesanan.</Alert>
       ) : (
-        <div className="table-responsive">
-          <table className="table align-middle">
-            <thead>
-              <tr><th>Nomor pesanan</th><th>Buku</th><th>Jumlah</th><th>Total</th><th>Alamat pengiriman</th><th>Status</th></tr>
-            </thead>
-            <tbody>
-              {orders.map((order) => (
-                <tr key={order.id}>
-                  <td>{order.order_number}</td>
-                  <td>{order.book?.title || 'Buku tidak tersedia'}</td>
-                  <td>{order.quantity}</td>
-                  <td>{Number(order.total_amount).toLocaleString('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 })}</td>
-                  <td>{order.delivery_address || 'Alamat belum tersedia'}</td>
-                  <td>{order.status || 'menunggu'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="d-grid gap-3">
+          {groupedOrders.map((order) => (
+            <Card key={order.orderNumber} className="shadow-sm">
+              <Card.Body>
+                <div className="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+                  <div>
+                    <h2 className="h5 mb-1">Pesanan {order.orderNumber}</h2>
+                    <span className="text-muted">{order.items.length} jenis buku · {order.quantity} buku</span>
+                  </div>
+                  <Badge bg="secondary">{order.items[0].status || 'menunggu'}</Badge>
+                </div>
+                <div className="table-responsive">
+                  <table className="table align-middle mb-3">
+                    <thead>
+                      <tr><th>Buku</th><th>Jumlah</th><th>Subtotal</th></tr>
+                    </thead>
+                    <tbody>
+                      {order.items.map((item) => (
+                        <tr key={item.id}>
+                          <td>{item.book?.title || 'Buku tidak tersedia'}</td>
+                          <td>{item.quantity}</td>
+                          <td>{Number(item.total_amount).toLocaleString('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 })}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="d-flex flex-wrap justify-content-between gap-2">
+                  <span className="text-muted">{order.items[0].delivery_address || 'Alamat belum tersedia'}</span>
+                  <strong>Total: {order.totalAmount.toLocaleString('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 })}</strong>
+                </div>
+              </Card.Body>
+            </Card>
+          ))}
         </div>
       )}
     </main>

@@ -7,6 +7,7 @@ use App\Models\Book;
 use App\Models\Genre;
 use App\Models\User;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
@@ -59,7 +60,7 @@ class CustomerPurchaseApiTest extends TestCase
         });
         Schema::create('transactions', function (Blueprint $table): void {
             $table->id();
-            $table->string('order_number')->unique();
+            $table->string('order_number')->index();
             $table->foreignId('customer_id')->constrained('users');
             $table->foreignId('book_id')->constrained();
             $table->unsignedInteger('quantity')->default(1);
@@ -133,18 +134,20 @@ class CustomerPurchaseApiTest extends TestCase
             'author_id' => $book->author_id,
         ]);
 
-        $this->withToken($token)
+        $response = $this->withToken($token)
             ->postJson('/api/customer/transactions/checkout', [
                 'items' => [
                     ['book_id' => $book->id, 'quantity' => 2],
                     ['book_id' => $secondBook->id, 'quantity' => 1],
                 ],
                 'delivery_address' => 'Jl. Merdeka No. 10, Jakarta',
-            ])
-            ->assertCreated()
+            ]);
+
+        $response->assertCreated()
             ->assertJsonCount(2)
             ->assertJsonPath('0.quantity', 2)
             ->assertJsonPath('1.quantity', 1);
+        $this->assertSame($response->json('0.order_number'), $response->json('1.order_number'));
 
         $this->assertSame(2, $book->fresh()->stock);
         $this->assertSame(2, $secondBook->fresh()->stock);
@@ -233,6 +236,57 @@ class CustomerPurchaseApiTest extends TestCase
             'id' => $transaction->id,
             'status' => 'selesai',
         ]);
+    }
+
+    public function test_admin_advances_status_for_every_book_in_an_order(): void
+    {
+        [$customer, $book] = $this->createCustomerAndBook(4);
+        $secondBook = Book::query()->create([
+            'title' => 'Bumi Manusia',
+            'description' => 'Sebuah kisah.',
+            'price' => 90000,
+            'stock' => 3,
+            'genre_id' => $book->genre_id,
+            'author_id' => $book->author_id,
+        ]);
+        $firstTransaction = $customer->transactions()->create([
+            'order_number' => 'ORD-STATUS-GROUP',
+            'book_id' => $book->id,
+            'quantity' => 1,
+            'total_amount' => '75000.00',
+            'delivery_address' => 'Jl. Merdeka No. 10, Jakarta',
+            'status' => 'menunggu',
+        ]);
+        $customer->transactions()->create([
+            'order_number' => 'ORD-STATUS-GROUP',
+            'book_id' => $secondBook->id,
+            'quantity' => 1,
+            'total_amount' => '90000.00',
+            'delivery_address' => 'Jl. Merdeka No. 10, Jakarta',
+            'status' => 'menunggu',
+        ]);
+        $admin = User::query()->create([
+            'name' => 'Admin',
+            'email' => 'admin@example.com',
+            'password' => Hash::make('password123'),
+        ]);
+        $admin->role = 'admin';
+        $admin->save();
+        $token = $admin->createToken('test')->plainTextToken;
+
+        $this->withToken($token)
+            ->patchJson("/api/admin/transactions/{$firstTransaction->id}/status", ['status' => 'diproses'])
+            ->assertOk()
+            ->assertJsonPath('status', 'diproses');
+
+        $this->assertDatabaseMissing('transactions', [
+            'order_number' => 'ORD-STATUS-GROUP',
+            'status' => 'menunggu',
+        ]);
+        $this->assertSame(2, DB::table('transactions')
+            ->where('order_number', 'ORD-STATUS-GROUP')
+            ->where('status', 'diproses')
+            ->count());
     }
 
     public function test_customer_cannot_update_order_status(): void

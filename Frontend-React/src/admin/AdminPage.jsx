@@ -10,6 +10,7 @@ import CatalogRecordList from './components/CatalogRecordList';
 import DeleteRecordModal from './components/DeleteRecordModal';
 import RecordFormModal from './components/RecordFormModal';
 import SummaryCard from './components/SummaryCard';
+import { groupTransactions } from '../utils/groupTransactions';
 import './admin.css';
 
 const emptyRecords = { books: [], genres: [], authors: [] };
@@ -39,7 +40,7 @@ function AdminPage() {
   const { token, user, logout } = useAuth();
   const [records, setRecords] = useState(emptyRecords);
   const [transactions, setTransactions] = useState([]);
-  const [updatingTransactionId, setUpdatingTransactionId] = useState(null);
+  const [updatingOrderNumber, setUpdatingOrderNumber] = useState(null);
   const [users, setUsers] = useState([]);
   const [contactMessages, setContactMessages] = useState([]);
   const [activeSection, setActiveSection] = useState('books');
@@ -105,6 +106,7 @@ function AdminPage() {
   }, [token]);
 
   const currentSection = sections[activeSection] || null;
+  const groupedTransactions = useMemo(() => groupTransactions(transactions), [transactions]);
   const filteredRecords = useMemo(() => {
     if (!currentSection) return [];
 
@@ -205,23 +207,26 @@ function AdminPage() {
     }
   }
 
-  async function handleAdvanceTransaction(transaction) {
-    const nextStatus = transaction.status === 'menunggu' ? 'diproses' : 'selesai';
-    setUpdatingTransactionId(transaction.id);
+  async function handleAdvanceTransaction(order) {
+    const firstItem = order.items[0];
+    const nextStatus = firstItem.status === 'menunggu' ? 'diproses' : 'selesai';
+    setUpdatingOrderNumber(order.orderNumber);
     setError('');
 
     try {
       const updatedTransaction = await apiRequest(
-        `/admin/transactions/${transaction.id}/status`,
+        `/admin/transactions/${firstItem.id}/status`,
         { method: 'PATCH', token, body: { status: nextStatus } },
       );
       setTransactions((current) => current.map((item) => (
-        item.id === updatedTransaction.id ? updatedTransaction : item
+        item.order_number === updatedTransaction.order_number
+          ? { ...item, status: updatedTransaction.status }
+          : item
       )));
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Status pesanan gagal diperbarui.');
     } finally {
-      setUpdatingTransactionId(null);
+      setUpdatingOrderNumber(null);
     }
   }
 
@@ -238,7 +243,7 @@ function AdminPage() {
         }}
         onSignOut={handleSignOut}
         records={records}
-        transactions={transactions}
+        transactions={groupedTransactions}
         users={users}
         contactMessages={contactMessages}
         user={user}
@@ -260,7 +265,7 @@ function AdminPage() {
             <SummaryCard label="Buku" value={records.books.length} icon="B" tone="tone-book" />
             <SummaryCard label="Genre" value={records.genres.length} icon="G" tone="tone-genre" />
             <SummaryCard label="Author" value={records.authors.length} icon="A" tone="tone-author" />
-            <SummaryCard label="Transaksi" value={transactions.length} icon="T" tone="tone-order" />
+            <SummaryCard label="Transaksi" value={groupedTransactions.length} icon="T" tone="tone-order" />
             <SummaryCard label="Pengguna" value={users.length} icon="U" tone="tone-book" />
             <SummaryCard label="Pesan masuk" value={contactMessages.length} icon="P" tone="tone-genre" />
           </div>
@@ -289,42 +294,62 @@ function AdminPage() {
           {activeSection === 'transactions' && (
             <section className="admin-orders-panel">
               <h2 className="h5">Daftar pesanan</h2>
-            {transactions.length === 0 ? (
+            {groupedTransactions.length === 0 ? (
               <p className="text-muted mb-0">{loading ? 'Memuat transaksi...' : 'Belum ada transaksi.'}</p>
             ) : (
-              <div className="table-responsive">
-                <table className="table align-middle mb-0">
-                  <thead><tr><th>Pesanan</th><th>Customer</th><th>Buku</th><th>Jumlah</th><th>Total</th><th>Alamat pengiriman</th><th>Status</th><th>Aksi</th></tr></thead>
-                  <tbody>
-                    {transactions.map((transaction) => (
-                      <tr key={transaction.id}>
-                        <td>{transaction.order_number}</td>
-                        <td>{transaction.customer?.name || 'Customer'}</td>
-                        <td>{transaction.book?.title || 'Buku'}</td>
-                        <td>{transaction.quantity}</td>
-                        <td>{Number(transaction.total_amount).toLocaleString('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 })}</td>
-                        <td>{transaction.delivery_address || 'Alamat belum tersedia'}</td>
-                        <td>{transaction.status || 'menunggu'}</td>
-                        <td>
-                          {transaction.status !== 'selesai' && (
+              <div className="d-grid gap-3">
+                {groupedTransactions.map((order) => {
+                  const firstItem = order.items[0];
+                  const status = firstItem.status || 'menunggu';
+
+                  return (
+                    <section className="border rounded-3 p-3" key={order.orderNumber}>
+                      <div className="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+                        <div>
+                          <h3 className="h6 mb-1">Pesanan {order.orderNumber}</h3>
+                          <div className="text-muted small">
+                            {firstItem.customer?.name || 'Customer'} · {order.items.length} jenis buku · {order.quantity} buku
+                          </div>
+                        </div>
+                        <div className="d-flex align-items-center gap-2">
+                          <span className="badge text-bg-secondary">{status}</span>
+                          {status !== 'selesai' && (
                             <Button
-                              disabled={updatingTransactionId !== null}
-                              onClick={() => handleAdvanceTransaction(transaction)}
+                              disabled={updatingOrderNumber !== null}
+                              onClick={() => handleAdvanceTransaction(order)}
                               size="sm"
                               variant="outline-dark"
                             >
-                              {updatingTransactionId === transaction.id
+                              {updatingOrderNumber === order.orderNumber
                                 ? 'Menyimpan...'
-                                : transaction.status === 'diproses'
+                                : status === 'diproses'
                                   ? 'Tandai selesai'
                                   : 'Proses pesanan'}
                             </Button>
                           )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                        </div>
+                      </div>
+                      <div className="table-responsive">
+                        <table className="table align-middle mb-2">
+                          <thead><tr><th>Buku</th><th>Jumlah</th><th>Subtotal</th></tr></thead>
+                          <tbody>
+                            {order.items.map((item) => (
+                              <tr key={item.id}>
+                                <td>{item.book?.title || 'Buku'}</td>
+                                <td>{item.quantity}</td>
+                                <td>{Number(item.total_amount).toLocaleString('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 })}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="d-flex flex-wrap justify-content-between gap-2 small">
+                        <span className="text-muted">{firstItem.delivery_address || 'Alamat belum tersedia'}</span>
+                        <strong>Total: {order.totalAmount.toLocaleString('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 })}</strong>
+                      </div>
+                    </section>
+                  );
+                })}
               </div>
             )}
             </section>

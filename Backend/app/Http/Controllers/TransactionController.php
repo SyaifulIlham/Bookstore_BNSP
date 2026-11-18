@@ -90,6 +90,7 @@ class TransactionController extends Controller
         abort_unless($user instanceof User, 401);
 
         $transactions = DB::transaction(function () use ($validated, $user): array {
+            $orderNumber = 'ORD-'.Str::upper((string) Str::uuid());
             $bookIds = collect($validated['items'])
                 ->pluck('book_id')
                 ->sort()
@@ -114,7 +115,7 @@ class TransactionController extends Controller
 
                 $book->decrement('stock', $quantity);
                 $transactions[] = $user->transactions()->create([
-                    'order_number' => 'ORD-'.Str::upper((string) Str::uuid()),
+                    'order_number' => $orderNumber,
                     'book_id' => $book->id,
                     'quantity' => $quantity,
                     'total_amount' => $this->calculateTotalAmount($book, $quantity),
@@ -140,19 +141,30 @@ class TransactionController extends Controller
             'status' => ['required', 'string', Rule::in(['diproses', 'selesai'])],
         ]);
 
-        $allowedNextStatus = [
-            'menunggu' => 'diproses',
-            'diproses' => 'selesai',
-        ];
+        DB::transaction(function () use ($transaction, $validated): void {
+            $orderTransactions = Transaction::query()
+                ->where('order_number', $transaction->order_number)
+                ->lockForUpdate()
+                ->get();
+            $allowedNextStatus = [
+                'menunggu' => 'diproses',
+                'diproses' => 'selesai',
+            ];
 
-        if (($allowedNextStatus[$transaction->status] ?? null) !== $validated['status']) {
-            throw ValidationException::withMessages([
-                'status' => 'Status pesanan hanya dapat diubah secara berurutan dari menunggu ke diproses, lalu selesai.',
-            ]);
-        }
+            if ($orderTransactions->contains(
+                fn (Transaction $orderTransaction): bool => ($allowedNextStatus[$orderTransaction->status] ?? null) !== $validated['status'],
+            )) {
+                throw ValidationException::withMessages([
+                    'status' => 'Status pesanan hanya dapat diubah secara berurutan dari menunggu ke diproses, lalu selesai.',
+                ]);
+            }
 
-        $transaction->update(['status' => $validated['status']]);
+            Transaction::query()
+                ->where('order_number', $transaction->order_number)
+                ->update(['status' => $validated['status']]);
+        });
 
+        $transaction->refresh();
         return response()->json($transaction->load(['customer', 'book']));
     }
 
